@@ -174,13 +174,18 @@ Hooks.on("renderTokenHUD", (hud, html) => {
   const root = html instanceof HTMLElement ? html : html[0];
   if (!root) return;
 
-  const row = document.createElement("div");
-  row.className = `${MODULE_ID}-hud-row`;
-  // pointer-events:all ensures clicks reach our buttons even if a parent has none
-  // flex-basis:100% forces this row onto its own line below the three HUD columns.
-  row.style.cssText = "display:flex;gap:4px;justify-content:center;padding:4px 0;pointer-events:all;position:relative;z-index:100;flex-basis:100%;width:100%;";
+  const ROW_STYLE = "display:flex;gap:4px;justify-content:center;padding:2px 0;pointer-events:all;position:relative;z-index:100;flex-basis:100%;width:100%;";
 
-  for (const ring of RINGS) {
+  const wrapper = document.createElement("div");
+  wrapper.className = `${MODULE_ID}-hud-wrapper`;
+  wrapper.style.cssText = "display:flex;flex-wrap:wrap;flex-basis:100%;width:100%;padding:2px 0;";
+
+  const row1 = document.createElement("div");
+  row1.style.cssText = ROW_STYLE;
+  const row2 = document.createElement("div");
+  row2.style.cssText = ROW_STYLE;
+
+  RINGS.forEach((ring, i) => {
     const color = "#" + RING_COLORS[ring].toString(16).padStart(6, "0");
     const btn = document.createElement("button");
     btn.type = "button";
@@ -196,23 +201,25 @@ Hooks.on("renderTokenHUD", (hud, html) => {
       "pointer-events:all",
     ].join(";");
 
-    // Use pointerdown so we fire before any HUD close handler on click/mouseup.
     btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      console.log(`${MODULE_ID} | stance pointerdown: ${ring}`);
       setTokenStance(token, ring)
         .then(() => hud.render())
         .catch(err => console.error(`${MODULE_ID} | Failed to set stance`, err));
     });
-    row.appendChild(btn);
-  }
 
-  // Insert after .col.right (the last of the three HUD columns) so our row
-  // sits below all columns without disrupting .col.middle's bar layout.
+    (i < 3 ? row1 : row2).appendChild(btn);
+  });
+
+  wrapper.appendChild(row1);
+  wrapper.appendChild(row2);
+
+  // Insert after .col.right so the wrapper sits below all three HUD columns
+  // without disrupting .col.middle's bar layout.
   const lastCol = root.querySelector(".col.right") ?? root.lastElementChild;
-  lastCol.insertAdjacentElement("afterend", row);
+  lastCol.insertAdjacentElement("afterend", wrapper);
 });
 
 // ──────────────── sidebar token list context menu ────────────────
