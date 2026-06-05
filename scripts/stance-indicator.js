@@ -172,10 +172,12 @@ Hooks.on("renderTokenHUD", (hud, html) => {
 
   const currentStance = getTokenStance(token);
   const root = html instanceof HTMLElement ? html : html[0];
+  if (!root) return;
 
   const row = document.createElement("div");
   row.className = `${MODULE_ID}-hud-row`;
-  row.style.cssText = "display:flex;gap:4px;justify-content:center;padding:4px 0;";
+  // pointer-events:all ensures clicks reach our buttons even if a parent has none
+  row.style.cssText = "display:flex;gap:4px;justify-content:center;padding:4px 0;pointer-events:all;position:relative;z-index:100;";
 
   for (const ring of RINGS) {
     const color = "#" + RING_COLORS[ring].toString(16).padStart(6, "0");
@@ -190,10 +192,15 @@ Hooks.on("renderTokenHUD", (hud, html) => {
       "width:30px;height:30px",
       "cursor:pointer;font-size:18px",
       "display:flex;align-items:center;justify-content:center;border-radius:50%",
+      "pointer-events:all",
     ].join(";");
-    btn.addEventListener("click", (e) => {
+
+    // Use pointerdown so we fire before any HUD close handler on click/mouseup.
+    btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log(`${MODULE_ID} | stance pointerdown: ${ring}`);
       setTokenStance(token, ring)
         .then(() => hud.render())
         .catch(err => console.error(`${MODULE_ID} | Failed to set stance`, err));
@@ -201,7 +208,14 @@ Hooks.on("renderTokenHUD", (hud, html) => {
     row.appendChild(btn);
   }
 
-  root.appendChild(row);
+  // Insert right after the bar1 element (endurance).
+  // Selectors cover the known Foundry v12-v14 bar markup variations.
+  const bar1 = root.querySelector(".bar1, [data-bar='bar1'], .attribute.bar1");
+  if (bar1) {
+    bar1.insertAdjacentElement("afterend", row);
+  } else {
+    root.appendChild(row);
+  }
 });
 
 // ──────────────── sidebar token list context menu ────────────────
