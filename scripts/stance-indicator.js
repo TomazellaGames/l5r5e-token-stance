@@ -184,37 +184,20 @@ function _pushStanceEntries(entries, knownToken) {
 
   for (const ring of RINGS) {
     const displayName = localizeRing(ring);
-    const action = () => {
-      const token = _resolveToken(knownToken);
-      console.log(`${MODULE_ID} | onClick for ring "${ring}", resolved token:`, token);
-      if (!token || !canChangeStance(token)) return;
-      setTokenStance(token, ring).catch(err =>
-        console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
-      );
-    };
     entries.push({
-      // v14 ApplicationV2 ContextMenuEntry fields
       label: displayName,
-      visible: true,
-      onClick: action,
-      // v12/v13 legacy ContextMenuEntry fields
-      name: displayName,
-      condition: () => true,
-      callback: action,
-      icon: `<i class="i_${ring}"></i>`,
+      icon: `i_${ring}`,     // CSS class string — Foundry wraps it in <i class="...">
+      onClick: () => {
+        const token = _resolveToken(knownToken);
+        console.log(`${MODULE_ID} | onClick "${ring}", token:`, token);
+        if (!token || !canChangeStance(token)) return;
+        setTokenStance(token, ring).catch(err =>
+          console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
+        );
+      },
     });
   }
 }
-
-// v12–v13: called from PlaceableObject._getContextOptions()
-Hooks.on("getTokenContextOptions", (tokenOrHtml, entries) => {
-  const token = (tokenOrHtml instanceof Token ? tokenOrHtml : null)
-    ?? canvas.tokens?.hover
-    ?? _lastHoveredToken;
-  const before = entries.length;
-  _pushStanceEntries(entries, token);
-  console.log(`${MODULE_ID} | getTokenContextOptions: pushed ${entries.length - before} entries`);
-});
 
 // v14+: hook fires BEFORE hoverToken, so token is resolved lazily inside onClick.
 Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
