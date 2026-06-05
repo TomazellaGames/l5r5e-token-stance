@@ -177,7 +177,8 @@ Hooks.on("renderTokenHUD", (hud, html) => {
   const row = document.createElement("div");
   row.className = `${MODULE_ID}-hud-row`;
   // pointer-events:all ensures clicks reach our buttons even if a parent has none
-  row.style.cssText = "display:flex;gap:4px;justify-content:center;padding:4px 0;pointer-events:all;position:relative;z-index:100;";
+  // flex-basis:100% forces this row onto its own line below the three HUD columns.
+  row.style.cssText = "display:flex;gap:4px;justify-content:center;padding:4px 0;pointer-events:all;position:relative;z-index:100;flex-basis:100%;width:100%;";
 
   for (const ring of RINGS) {
     const color = "#" + RING_COLORS[ring].toString(16).padStart(6, "0");
@@ -208,17 +209,10 @@ Hooks.on("renderTokenHUD", (hud, html) => {
     row.appendChild(btn);
   }
 
-  // Log structure so we can find the right insertion point.
-  console.log(`${MODULE_ID} | HUD innerHTML:`, root.innerHTML);
-
-  // Insert right after the bar1 element (endurance).
-  // Selectors cover the known Foundry v12-v14 bar markup variations.
-  const bar1 = root.querySelector(".bar1, [data-bar='bar1'], .attribute.bar1");
-  if (bar1) {
-    bar1.insertAdjacentElement("afterend", row);
-  } else {
-    root.appendChild(row);
-  }
+  // Insert after .col.right (the last of the three HUD columns) so our row
+  // sits below all columns without disrupting .col.middle's bar layout.
+  const lastCol = root.querySelector(".col.right") ?? root.lastElementChild;
+  lastCol.insertAdjacentElement("afterend", row);
 });
 
 // ──────────────── sidebar token list context menu ────────────────
