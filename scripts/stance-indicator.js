@@ -167,6 +167,7 @@ Hooks.on("updateToken", (tokenDoc, changes) => {
 let _lastHoveredToken = null;
 
 Hooks.on("hoverToken", (token, hovered) => {
+  console.log(`${MODULE_ID} | hoverToken fired`, { tokenName: token?.name, hovered });
   if (hovered) _lastHoveredToken = token;
 });
 
@@ -207,20 +208,18 @@ Hooks.on("getTokenContextOptions", (tokenOrHtml, entries) => {
 
 // v14+: ApplicationV2-based context menu (replaces getTokenContextOptions)
 Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
-  console.log(`${MODULE_ID} | getTokenPlaceableContextOptions fired`, { application, menuItems });
-  const token = canvas.tokens?.hover ?? _lastHoveredToken;
-  console.log(`${MODULE_ID} | resolved token:`, token);
+  // canvas.tokens.hover is null by the time the context menu fires in v14;
+  // fall back to the last-hovered token, then to the single controlled token.
+  const token = canvas.tokens?.hover
+    ?? _lastHoveredToken
+    ?? (canvas.tokens?.controlled?.length === 1 ? canvas.tokens.controlled[0] : null);
+  console.log(`${MODULE_ID} | getTokenPlaceableContextOptions fired`, {
+    hover: canvas.tokens?.hover,
+    lastHovered: _lastHoveredToken,
+    controlled: canvas.tokens?.controlled,
+    resolved: token,
+  });
   const before = menuItems.length;
   _pushStanceEntries(menuItems, token);
-  console.log(`${MODULE_ID} | pushed ${menuItems.length - before} entries (menuItems now ${menuItems.length})`);
+  console.log(`${MODULE_ID} | pushed ${menuItems.length - before} entries`);
 });
-
-// Catch-all: log every hook that fires with "context" or "options" in its name
-// to detect if Foundry v14 uses a completely different hook name.
-const _origCall = Hooks.call.bind(Hooks);
-Hooks.call = function(event, ...args) {
-  if (/context|options/i.test(event)) {
-    console.log(`${MODULE_ID} | Hooks.call: "${event}"`, args);
-  }
-  return _origCall(event, ...args);
-};
