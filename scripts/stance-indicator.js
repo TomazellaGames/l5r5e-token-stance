@@ -27,6 +27,10 @@ const RING_ICONS = {
 
 const drawGens = new WeakMap();
 
+// loadTexture was moved to foundry.canvas.loadTexture in Foundry v13.
+// Fall back to the (deprecated) global for v12 compatibility.
+const _loadTexture = foundry.canvas?.loadTexture?.bind(foundry.canvas) ?? loadTexture;
+
 // ──────────────── stance data helpers ────────────────
 
 function localizeRing(ring) {
@@ -104,7 +108,7 @@ async function renderStance(token) {
 
   let texture;
   try {
-    texture = await loadTexture(iconPath);
+    texture = await _loadTexture(iconPath);
   } catch (err) {
     console.warn(`${MODULE_ID} | Could not load icon for stance "${stance}"`, err);
     return;
@@ -130,13 +134,25 @@ async function renderStance(token) {
   token.addChild(container);
 }
 
-// ──────────────── update hooks ────────────────
+// ──────────────── right-click token capture ────────────────
+// Attach a PIXI rightdown listener to every token so _menuToken is set at the
+// exact moment of the click — before any canvas hover state gets cleared.
+const _rightDownFns = new WeakMap();
+
+function _registerRightDown(token) {
+  const prev = _rightDownFns.get(token);
+  if (prev) token.off("rightdown", prev);
+  const fn = () => { _menuToken = token; _lastHoveredToken = token; };
+  _rightDownFns.set(token, fn);
+  token.on("rightdown", fn);
+}
 
 // Re-draw on every token refresh (position, visibility, scene load, …).
 Hooks.on("refreshToken", (token) => {
   renderStance(token).catch(err =>
     console.error(`${MODULE_ID} | Error rendering stance indicator`, err)
   );
+  _registerRightDown(token);
 });
 
 // Characters: re-draw when the base actor's system data changes.
@@ -190,7 +206,7 @@ Hooks.on("getTokenContextOptions", (html, entries) => {
       // Use the system's LogotypeL5r icon font — auto-colored by l5r5e CSS.
       icon: `<i class="i_${ring}"></i>`,
       name: `${localizeRing(ring)}${isCurrent ? " ✓" : ""}`,
-      group: "stance",
+      condition: () => true,
       callback: () => {
         if (!_menuToken?.actor) return;
         setTokenStance(_menuToken, ring).catch(err =>
