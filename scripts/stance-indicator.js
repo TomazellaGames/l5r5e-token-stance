@@ -1,19 +1,20 @@
 // L5R5e Token Stance Indicator
-// Renders the active ring stance from actor.system.conflict.stance on the token.
-// Visible only to the token owner and the GM — purely client-side, never synced.
+// Renders the active ring stance on the token, visible only to owner and GM.
+// Adds a right-click context menu to change stance on any token (including NPCs).
 
 const MODULE_ID = "l5r5e-token-stance";
 const CONTAINER_NAME = `${MODULE_ID}-stance`;
-
-// Detect PIXI major version once at load time to branch between v7 and v8 Graphics APIs.
 const PIXI_MAJOR = parseInt(PIXI.VERSION.split(".")[0]);
+const RINGS = ["air", "earth", "fire", "water", "void"];
 
+// Official ring colors from system/styles/scss/colors.scss.
+// Void is lifted slightly from #4B4641 so it stays visible against the dark token bg.
 const RING_COLORS = {
-  air:   0x88BBFF,
-  earth: 0x88CC44,
-  fire:  0xFF5500,
-  water: 0x2277DD,
-  void:  0xAA44EE,
+  air:   0x917896,  // rgb(145, 120, 150)
+  earth: 0x699678,  // rgb(105, 150, 120)
+  fire:  0x9B7350,  // rgb(155, 115, 80)
+  water: 0x5F919B,  // rgb(95,  145, 155)
+  void:  0x807A75,  // rgb(75,  70,  65)  — brightened for visibility
 };
 
 const RING_ICONS = {
@@ -24,29 +25,58 @@ const RING_ICONS = {
   void:  "systems/l5r5e/assets/icons/rings/void.svg",
 };
 
-// Prevents a stale async draw from replacing a newer one when refreshToken
-// fires multiple times in quick succession.
 const drawGens = new WeakMap();
 
-function canViewStance(token) {
-  if (game.user.isGM) return true;
-  return token.actor?.testUserPermission(game.user, "OWNER") ?? false;
+// ──────────────── stance data helpers ────────────────
+
+function localizeRing(ring) {
+  const key = `l5r5e.rings.${ring}`;
+  const result = game.i18n.localize(key);
+  return result !== key ? result : ring.charAt(0).toUpperCase() + ring.slice(1);
 }
+
+// Characters store stance in system.stance (written by the conflict tab UI).
+// NPCs and other actor types store stance in the token document flag so it
+// persists per-token and works for both linked and unlinked tokens.
+function getTokenStance(token) {
+  if (!token.actor) return null;
+  if (token.actor.type === "character") return token.actor.system?.stance ?? null;
+  return token.document.getFlag(MODULE_ID, "stance") ?? null;
+}
+
+async function setTokenStance(token, ring) {
+  if (!token.actor) return;
+  if (token.actor.type === "character") {
+    await token.actor.update({ "system.stance": ring });
+  } else {
+    // Token document flag keeps the stance per-token for NPCs/armies.
+    await token.document.setFlag(MODULE_ID, "stance", ring);
+  }
+}
+
+// ──────────────── permissions ────────────────
+
+function canViewStance(token) {
+  return game.user.isGM || (token.actor?.testUserPermission(game.user, "OWNER") ?? false);
+}
+
+function canChangeStance(token) {
+  return game.user.isGM || (token.actor?.testUserPermission(game.user, "OWNER") ?? false);
+}
+
+// ──────────────── PIXI rendering ────────────────
 
 function removeContainer(token) {
   const c = token.getChildByName?.(CONTAINER_NAME);
   if (c) c.destroy({ children: true });
 }
 
-// Returns a PIXI.Graphics background circle, compatible with both PIXI v7 and v8.
 function buildBackground(radius, ringColor) {
   const g = new PIXI.Graphics();
   if (PIXI_MAJOR >= 8) {
-    // PIXI v8 (Foundry v13+)
     g.circle(0, 0, radius).fill({ color: 0x000000, alpha: 0.55 });
     g.circle(0, 0, radius).stroke({ color: ringColor, width: 1.5, alpha: 0.85 });
   } else {
-    // PIXI v7 (Foundry v11–v12)
     g.beginFill(0x000000, 0.55)
      .lineStyle(1.5, ringColor, 0.85)
      .drawCircle(0, 0, radius)
@@ -64,8 +94,8 @@ async function renderStance(token) {
   if (!token.w || !token.h) return;
   if (!token.actor || !canViewStance(token)) return;
 
-  const stance = token.actor.system?.stance;
-  const color = RING_COLORS[stance];
+  const stance = getTokenStance(token);
+  const color  = RING_COLORS[stance];
   const iconPath = RING_ICONS[stance];
   if (color === undefined || !iconPath) return;
 
@@ -80,41 +110,38 @@ async function renderStance(token) {
     return;
   }
 
-  // Bail out if a newer draw was requested while we were awaiting the texture,
-  // or if the token was destroyed in the meantime.
+  // Discard if a newer draw was triggered while we awaited the texture.
   if (drawGens.get(token) !== gen || token.destroyed) return;
 
   const container = new PIXI.Container();
   container.name = CONTAINER_NAME;
-
   container.addChild(buildBackground(bgRadius, color));
 
   if (texture?.valid) {
     const sprite = new PIXI.Sprite(texture);
     sprite.anchor.set(0.5, 0.5);
-    sprite.width = iconSize * 0.82;
+    sprite.width  = iconSize * 0.82;
     sprite.height = iconSize * 0.82;
-    sprite.tint = color;
+    sprite.tint   = color;
     container.addChild(sprite);
   }
 
-  // Position the icon at the bottom-right corner, inset so it stays inside the token bounds.
   container.position.set(token.w - bgRadius * 1.1, token.h - bgRadius * 1.1);
-
   token.addChild(container);
 }
 
-// Re-draw on every token refresh (position changes, visibility changes, scene load, etc.).
+// ──────────────── update hooks ────────────────
+
+// Re-draw on every token refresh (position, visibility, scene load, …).
 Hooks.on("refreshToken", (token) => {
   renderStance(token).catch(err =>
     console.error(`${MODULE_ID} | Error rendering stance indicator`, err)
   );
 });
 
-// Linked tokens: re-draw directly when the base actor's system data changes.
-// We call renderStance() directly rather than token.refresh() because Foundry
-// may skip the refreshToken hook when only actor data changes (no canvas-visible
-// property like position or vision changed).
+// Characters: re-draw when the base actor's system data changes.
+// We call renderStance directly instead of token.refresh() because Foundry
+// may skip the refreshToken hook when only actor data changes.
 Hooks.on("updateActor", (actor, changes) => {
   if (!("system" in changes)) return;
   canvas.tokens?.placeables
@@ -122,12 +149,43 @@ Hooks.on("updateActor", (actor, changes) => {
     .forEach(t => renderStance(t).catch(console.error));
 });
 
-// Unlinked tokens (delta changes) or actor re-linking.
+// NPCs / unlinked tokens: re-draw when token flags or delta system data changes.
 Hooks.on("updateToken", (tokenDoc, changes) => {
   if (
     !foundry.utils.hasProperty(changes, "delta.system") &&
+    !foundry.utils.hasProperty(changes, `flags.${MODULE_ID}`) &&
     !("actorId" in changes)
   ) return;
   const token = tokenDoc.object;
   if (token) renderStance(token).catch(console.error);
+});
+
+// ──────────────── right-click context menu ────────────────
+
+// Captured when the menu is built so callbacks hold a stable reference
+// even if canvas.tokens.hover changes while the menu is open.
+let _menuToken = null;
+
+Hooks.on("getTokenContextOptions", (html, entries) => {
+  _menuToken = canvas.tokens?.hover ?? null;
+  if (!_menuToken || !canChangeStance(_menuToken)) return;
+
+  const currentStance = getTokenStance(_menuToken);
+
+  for (const ring of RINGS) {
+    const isCurrent = currentStance === ring;
+
+    entries.push({
+      // Use the system's LogotypeL5r icon font — auto-colored by l5r5e CSS.
+      icon: `<i class="i_${ring}"></i>`,
+      name: `${localizeRing(ring)}${isCurrent ? " ✓" : ""}`,
+      group: "stance",
+      callback: () => {
+        if (!_menuToken?.actor) return;
+        setTokenStance(_menuToken, ring).catch(err =>
+          console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
+        );
+      },
+    });
+  }
 });
