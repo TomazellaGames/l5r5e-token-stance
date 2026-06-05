@@ -171,21 +171,33 @@ Hooks.on("hoverToken", (token, hovered) => {
   if (hovered) _lastHoveredToken = token;
 });
 
-function _pushStanceEntries(entries, token) {
-  if (!token || !canChangeStance(token)) return;
-  const currentStance = getTokenStance(token);
+// In v14, getTokenPlaceableContextOptions fires BEFORE hoverToken, so canvas.tokens.hover
+// and _lastHoveredToken are both null at push time. We push entries unconditionally and
+// resolve the token lazily inside onClick/callback (by then hoverToken has fired).
+function _resolveToken(knownToken) {
+  return knownToken ?? canvas.tokens?.hover ?? _lastHoveredToken;
+}
+
+function _pushStanceEntries(entries, knownToken) {
+  // If we already know the token (v12/v13 path) and it's not authorised, skip.
+  if (knownToken && !canChangeStance(knownToken)) return;
+
   for (const ring of RINGS) {
-    const isCurrent = currentStance === ring;
-    const displayName = `${localizeRing(ring)}${isCurrent ? " ✓" : ""}`;
-    const action = () => setTokenStance(token, ring).catch(err =>
-      console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
-    );
+    const displayName = localizeRing(ring);
+    const action = () => {
+      const token = _resolveToken(knownToken);
+      console.log(`${MODULE_ID} | onClick for ring "${ring}", resolved token:`, token);
+      if (!token || !canChangeStance(token)) return;
+      setTokenStance(token, ring).catch(err =>
+        console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
+      );
+    };
     entries.push({
       // v14 ApplicationV2 ContextMenuEntry fields
       label: displayName,
       visible: true,
       onClick: action,
-      // v12/v13 legacy ContextMenuEntry fields (same object, ignored by v14)
+      // v12/v13 legacy ContextMenuEntry fields
       name: displayName,
       condition: () => true,
       callback: action,
@@ -196,30 +208,17 @@ function _pushStanceEntries(entries, token) {
 
 // v12–v13: called from PlaceableObject._getContextOptions()
 Hooks.on("getTokenContextOptions", (tokenOrHtml, entries) => {
-  console.log(`${MODULE_ID} | getTokenContextOptions fired`, { tokenOrHtml, entries });
   const token = (tokenOrHtml instanceof Token ? tokenOrHtml : null)
     ?? canvas.tokens?.hover
     ?? _lastHoveredToken;
-  console.log(`${MODULE_ID} | resolved token:`, token);
   const before = entries.length;
   _pushStanceEntries(entries, token);
-  console.log(`${MODULE_ID} | pushed ${entries.length - before} entries (entries now ${entries.length})`);
+  console.log(`${MODULE_ID} | getTokenContextOptions: pushed ${entries.length - before} entries`);
 });
 
-// v14+: ApplicationV2-based context menu (replaces getTokenContextOptions)
+// v14+: hook fires BEFORE hoverToken, so token is resolved lazily inside onClick.
 Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
-  // canvas.tokens.hover is null by the time the context menu fires in v14;
-  // fall back to the last-hovered token, then to the single controlled token.
-  const token = canvas.tokens?.hover
-    ?? _lastHoveredToken
-    ?? (canvas.tokens?.controlled?.length === 1 ? canvas.tokens.controlled[0] : null);
-  console.log(`${MODULE_ID} | getTokenPlaceableContextOptions fired`, {
-    hover: canvas.tokens?.hover,
-    lastHovered: _lastHoveredToken,
-    controlled: canvas.tokens?.controlled,
-    resolved: token,
-  });
   const before = menuItems.length;
-  _pushStanceEntries(menuItems, token);
-  console.log(`${MODULE_ID} | pushed ${menuItems.length - before} entries`);
+  _pushStanceEntries(menuItems, null);
+  console.log(`${MODULE_ID} | getTokenPlaceableContextOptions: pushed ${menuItems.length - before} entries (total ${menuItems.length})`);
 });
