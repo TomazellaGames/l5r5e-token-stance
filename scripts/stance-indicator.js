@@ -208,6 +208,9 @@ Hooks.on("renderTokenHUD", (hud, html) => {
     row.appendChild(btn);
   }
 
+  // Log structure so we can find the right insertion point.
+  console.log(`${MODULE_ID} | HUD innerHTML:`, root.innerHTML);
+
   // Insert right after the bar1 element (endurance).
   // Selectors cover the known Foundry v12-v14 bar markup variations.
   const bar1 = root.querySelector(".bar1, [data-bar='bar1'], .attribute.bar1");
