@@ -162,56 +162,64 @@ Hooks.on("updateToken", (tokenDoc, changes) => {
   if (token) renderStance(token).catch(console.error);
 });
 
-// ──────────────── right-click context menu ────────────────
+// ──────────────── TokenHUD stance buttons ────────────────
+// In Foundry v14, right-clicking a canvas token opens the TokenHUD — there is no
+// separate dropdown context menu.  We inject a row of ring buttons into the HUD.
 
-let _lastHoveredToken = null;
+Hooks.on("renderTokenHUD", (hud, html) => {
+  const token = hud.object;
+  if (!token || !canViewStance(token)) return;
 
-Hooks.on("hoverToken", (token, hovered) => {
-  console.log(`${MODULE_ID} | hoverToken fired`, { tokenName: token?.name, hovered });
-  if (hovered) _lastHoveredToken = token;
-});
+  const currentStance = getTokenStance(token);
+  const root = html instanceof HTMLElement ? html : html[0];
 
-// In v14, getTokenPlaceableContextOptions fires BEFORE hoverToken, so canvas.tokens.hover
-// and _lastHoveredToken are both null at push time. We push entries unconditionally and
-// resolve the token lazily inside onClick/callback (by then hoverToken has fired).
-function _resolveToken(knownToken) {
-  return knownToken ?? canvas.tokens?.hover ?? _lastHoveredToken;
-}
-
-function _pushStanceEntries(entries, knownToken) {
-  // If we already know the token (v12/v13 path) and it's not authorised, skip.
-  if (knownToken && !canChangeStance(knownToken)) return;
+  const row = document.createElement("div");
+  row.className = `${MODULE_ID}-hud-row`;
+  row.style.cssText = "display:flex;gap:4px;justify-content:center;padding:4px 0;";
 
   for (const ring of RINGS) {
-    const displayName = localizeRing(ring);
-    entries.push({
-      label: displayName,
-      icon: `i_${ring}`,     // CSS class string — Foundry wraps it in <i class="...">
+    const color = "#" + RING_COLORS[ring].toString(16).padStart(6, "0");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = localizeRing(ring);
+    btn.innerHTML = `<i class="i_${ring}"></i>`;
+    btn.style.cssText = [
+      "background:rgba(0,0,0,.6)",
+      `border:2px solid ${currentStance === ring ? color : "transparent"}`,
+      `color:${color}`,
+      "width:30px;height:30px",
+      "cursor:pointer;font-size:18px",
+      "display:flex;align-items:center;justify-content:center;border-radius:50%",
+    ].join(";");
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setTokenStance(token, ring)
+        .then(() => hud.render())
+        .catch(err => console.error(`${MODULE_ID} | Failed to set stance`, err));
+    });
+    row.appendChild(btn);
+  }
+
+  root.appendChild(row);
+});
+
+// ──────────────── sidebar token list context menu ────────────────
+// getTokenPlaceableContextOptions is the v14 hook for the sidebar token tab.
+// We also add entries there for convenience.
+
+Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
+  for (const ring of RINGS) {
+    menuItems.push({
+      label: localizeRing(ring),
+      icon: `i_${ring}`,
       onClick: () => {
-        const token = _resolveToken(knownToken);
-        console.log(`${MODULE_ID} | onClick "${ring}", token:`, token);
+        const token = canvas.tokens?.hover ?? canvas.tokens?.controlled?.[0];
         if (!token || !canChangeStance(token)) return;
         setTokenStance(token, ring).catch(err =>
-          console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
+          console.error(`${MODULE_ID} | Failed to set stance`, err)
         );
       },
     });
   }
-}
-
-// v14+: sidebar token list context menu.
-Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
-  const before = menuItems.length;
-  _pushStanceEntries(menuItems, null);
-  console.log(`${MODULE_ID} | getTokenPlaceableContextOptions: pushed ${menuItems.length - before}`);
 });
-
-// Intercept ALL Hooks.call and Hooks.callAll to find which hook fires on canvas token right-click.
-// Remove once we identify the correct hook name.
-for (const method of ["call", "callAll"]) {
-  const _orig = Hooks[method].bind(Hooks);
-  Hooks[method] = function(event, ...args) {
-    console.log(`${MODULE_ID} | Hooks.${method}("${event}")`);
-    return _orig(event, ...args);
-  };
-}
