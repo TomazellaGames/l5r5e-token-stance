@@ -199,21 +199,19 @@ function _pushStanceEntries(entries, knownToken) {
   }
 }
 
-// v14+: hook fires BEFORE hoverToken, so token is resolved lazily inside onClick.
+// v14+: sidebar token list context menu.
 Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
-  // Log one existing entry so we can see exactly what format v14 uses.
-  if (menuItems.length > 0) {
-    const e = menuItems[0];
-    console.log(`${MODULE_ID} | existing entry keys:`, Object.keys(e));
-    console.log(`${MODULE_ID} | existing entry:`, JSON.parse(JSON.stringify(e, (k, v) => typeof v === "function" ? "[function]" : v)));
-  }
   const before = menuItems.length;
   _pushStanceEntries(menuItems, null);
-  console.log(`${MODULE_ID} | pushed ${menuItems.length - before} entries (total ${menuItems.length})`);
-  // Log our own added entry for comparison.
-  if (menuItems.length > before) {
-    const ours = menuItems[before];
-    console.log(`${MODULE_ID} | our entry keys:`, Object.keys(ours));
-    console.log(`${MODULE_ID} | our entry:`, JSON.parse(JSON.stringify(ours, (k, v) => typeof v === "function" ? "[function]" : v)));
-  }
+  console.log(`${MODULE_ID} | getTokenPlaceableContextOptions: pushed ${menuItems.length - before}`);
 });
+
+// Intercept ALL Hooks.call and Hooks.callAll to find which hook fires on canvas token right-click.
+// Remove once we identify the correct hook name.
+for (const method of ["call", "callAll"]) {
+  const _orig = Hooks[method].bind(Hooks);
+  Hooks[method] = function(event, ...args) {
+    console.log(`${MODULE_ID} | Hooks.${method}("${event}")`);
+    return _orig(event, ...args);
+  };
+}
