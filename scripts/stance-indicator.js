@@ -134,25 +134,11 @@ async function renderStance(token) {
   token.addChild(container);
 }
 
-// ──────────────── right-click token capture ────────────────
-// Attach a PIXI rightdown listener to every token so _menuToken is set at the
-// exact moment of the click — before any canvas hover state gets cleared.
-const _rightDownFns = new WeakMap();
-
-function _registerRightDown(token) {
-  const prev = _rightDownFns.get(token);
-  if (prev) token.off("rightdown", prev);
-  const fn = () => { _menuToken = token; _lastHoveredToken = token; };
-  _rightDownFns.set(token, fn);
-  token.on("rightdown", fn);
-}
-
 // Re-draw on every token refresh (position, visibility, scene load, …).
 Hooks.on("refreshToken", (token) => {
   renderStance(token).catch(err =>
     console.error(`${MODULE_ID} | Error rendering stance indicator`, err)
   );
-  _registerRightDown(token);
 });
 
 // Characters: re-draw when the base actor's system data changes.
@@ -178,41 +164,34 @@ Hooks.on("updateToken", (tokenDoc, changes) => {
 
 // ──────────────── right-click context menu ────────────────
 
-// canvas.tokens.hover is often null by the time getTokenContextOptions fires
-// because Foundry clears it during right-click event handling.
-// Track the last hovered token via hoverToken so we always have a reference.
+// In Foundry v12+, getTokenContextOptions receives the Token object as its first
+// argument (not an HTML element).  Older versions may pass the canvas element
+// instead, so we also check canvas.tokens.hover and a hoverToken-tracked
+// fallback.
 let _lastHoveredToken = null;
-let _menuToken = null;
 
 Hooks.on("hoverToken", (token, hovered) => {
   if (hovered) _lastHoveredToken = token;
 });
 
-Hooks.on("getTokenContextOptions", (html, entries) => {
-  // Prefer the live hover value; fall back to last-known hover; finally check
-  // if `html` itself is a Token (some Foundry versions pass the object directly).
-  _menuToken = canvas.tokens?.hover
-    ?? _lastHoveredToken
-    ?? (html instanceof Token ? html : null);
+Hooks.on("getTokenContextOptions", (tokenOrHtml, entries) => {
+  const token = (tokenOrHtml instanceof Token ? tokenOrHtml : null)
+    ?? canvas.tokens?.hover
+    ?? _lastHoveredToken;
 
-  if (!_menuToken || !canChangeStance(_menuToken)) return;
+  if (!token || !canChangeStance(token)) return;
 
-  const currentStance = getTokenStance(_menuToken);
+  const currentStance = getTokenStance(token);
 
   for (const ring of RINGS) {
     const isCurrent = currentStance === ring;
-
     entries.push({
-      // Use the system's LogotypeL5r icon font — auto-colored by l5r5e CSS.
       icon: `<i class="i_${ring}"></i>`,
       name: `${localizeRing(ring)}${isCurrent ? " ✓" : ""}`,
       condition: () => true,
-      callback: () => {
-        if (!_menuToken?.actor) return;
-        setTokenStance(_menuToken, ring).catch(err =>
-          console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
-        );
-      },
+      callback: () => setTokenStance(token, ring).catch(err =>
+        console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
+      ),
     });
   }
 });
