@@ -1,0 +1,24 @@
+{
+  "id": "l5r5e-token-stance",
+  "title": "L5R5e Token Stance Indicator",
+  "description": "Displays the current ring stance from the conflict tab as an icon on the token, visible only to the token's owner and the GM.",
+  "version": "1.0.0",
+  "authors": [
+    {
+      "name": "Jeferson Tomazella",
+      "email": "jefersonkingthor@gmail.com"
+    }
+  ],
+  "compatibility": {
+    "minimum": "12",
+    "verified": "14"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "l5r5e"
+      }
+    ]
+  },
+  "esmodules": ["scripts/stance-indicator.js"]
+}
