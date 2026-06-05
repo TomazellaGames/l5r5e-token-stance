@@ -164,34 +164,45 @@ Hooks.on("updateToken", (tokenDoc, changes) => {
 
 // ──────────────── right-click context menu ────────────────
 
-// In Foundry v12+, getTokenContextOptions receives the Token object as its first
-// argument (not an HTML element).  Older versions may pass the canvas element
-// instead, so we also check canvas.tokens.hover and a hoverToken-tracked
-// fallback.
 let _lastHoveredToken = null;
 
 Hooks.on("hoverToken", (token, hovered) => {
   if (hovered) _lastHoveredToken = token;
 });
 
+function _pushStanceEntries(entries, token) {
+  if (!token || !canChangeStance(token)) return;
+  const currentStance = getTokenStance(token);
+  for (const ring of RINGS) {
+    const isCurrent = currentStance === ring;
+    const displayName = `${localizeRing(ring)}${isCurrent ? " ✓" : ""}`;
+    const action = () => setTokenStance(token, ring).catch(err =>
+      console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
+    );
+    entries.push({
+      // v14 ApplicationV2 ContextMenuEntry fields
+      label: displayName,
+      visible: true,
+      onClick: action,
+      // v12/v13 legacy ContextMenuEntry fields (same object, ignored by v14)
+      name: displayName,
+      condition: () => true,
+      callback: action,
+      icon: `<i class="i_${ring}"></i>`,
+    });
+  }
+}
+
+// v12–v13: called from PlaceableObject._getContextOptions()
 Hooks.on("getTokenContextOptions", (tokenOrHtml, entries) => {
   const token = (tokenOrHtml instanceof Token ? tokenOrHtml : null)
     ?? canvas.tokens?.hover
     ?? _lastHoveredToken;
+  _pushStanceEntries(entries, token);
+});
 
-  if (!token || !canChangeStance(token)) return;
-
-  const currentStance = getTokenStance(token);
-
-  for (const ring of RINGS) {
-    const isCurrent = currentStance === ring;
-    entries.push({
-      icon: `<i class="i_${ring}"></i>`,
-      name: `${localizeRing(ring)}${isCurrent ? " ✓" : ""}`,
-      condition: () => true,
-      callback: () => setTokenStance(token, ring).catch(err =>
-        console.error(`${MODULE_ID} | Failed to set stance to "${ring}"`, err)
-      ),
-    });
-  }
+// v14+: ApplicationV2-based context menu (replaces getTokenContextOptions)
+Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
+  const token = canvas.tokens?.hover ?? _lastHoveredToken;
+  _pushStanceEntries(menuItems, token);
 });
