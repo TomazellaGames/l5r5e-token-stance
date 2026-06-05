@@ -1,8 +1,10 @@
 {
   "id": "l5r5e-token-stance",
   "title": "L5R5e Token Stance Indicator",
-  "description": "Displays the current ring stance from the conflict tab as an icon on the token, visible only to the token's owner and the GM.",
+  "description": "Displays the current ring stance from the conflict tab as an icon on the token, visible only to the token's owner and the GM. Adds ring buttons to the Token HUD to change stance without opening the character sheet.",
   "version": "1.0.0",
+  "manifest": "https://raw.githubusercontent.com/TomazellaGames/l5r5e-token-stance/main/module.json",
+  "download": "https://github.com/TomazellaGames/l5r5e-token-stance/releases/latest/download/l5r5e-token-stance.zip",
   "authors": [
     {
       "name": "Jeferson Tomazella",
