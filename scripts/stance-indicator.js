@@ -162,12 +162,23 @@ Hooks.on("updateToken", (tokenDoc, changes) => {
 
 // ──────────────── right-click context menu ────────────────
 
-// Captured when the menu is built so callbacks hold a stable reference
-// even if canvas.tokens.hover changes while the menu is open.
+// canvas.tokens.hover is often null by the time getTokenContextOptions fires
+// because Foundry clears it during right-click event handling.
+// Track the last hovered token via hoverToken so we always have a reference.
+let _lastHoveredToken = null;
 let _menuToken = null;
 
+Hooks.on("hoverToken", (token, hovered) => {
+  if (hovered) _lastHoveredToken = token;
+});
+
 Hooks.on("getTokenContextOptions", (html, entries) => {
-  _menuToken = canvas.tokens?.hover ?? null;
+  // Prefer the live hover value; fall back to last-known hover; finally check
+  // if `html` itself is a Token (some Foundry versions pass the object directly).
+  _menuToken = canvas.tokens?.hover
+    ?? _lastHoveredToken
+    ?? (html instanceof Token ? html : null);
+
   if (!_menuToken || !canChangeStance(_menuToken)) return;
 
   const currentStance = getTokenStance(_menuToken);
