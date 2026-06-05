@@ -111,20 +111,23 @@ Hooks.on("refreshToken", (token) => {
   );
 });
 
-// Trigger a refresh when the actor's conflict data changes (linked tokens).
+// Linked tokens: re-draw directly when the base actor's system data changes.
+// We call renderStance() directly rather than token.refresh() because Foundry
+// may skip the refreshToken hook when only actor data changes (no canvas-visible
+// property like position or vision changed).
 Hooks.on("updateActor", (actor, changes) => {
-  if (!foundry.utils.hasProperty(changes, "system.conflict")) return;
+  if (!("system" in changes)) return;
   canvas.tokens?.placeables
-    .filter(t => t.actor?.id === actor.id)
-    .forEach(t => t.refresh());
+    .filter(t => t.document.actorId === actor.id)
+    .forEach(t => renderStance(t).catch(console.error));
 });
 
-// Trigger a refresh when an unlinked token's embedded actor delta changes,
-// or when the token is re-linked to a different actor.
+// Unlinked tokens (delta changes) or actor re-linking.
 Hooks.on("updateToken", (tokenDoc, changes) => {
   if (
-    !foundry.utils.hasProperty(changes, "delta.system.conflict") &&
+    !foundry.utils.hasProperty(changes, "delta.system") &&
     !("actorId" in changes)
   ) return;
-  tokenDoc.object?.refresh();
+  const token = tokenDoc.object;
+  if (token) renderStance(token).catch(console.error);
 });
