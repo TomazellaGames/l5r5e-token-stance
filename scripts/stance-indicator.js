@@ -195,14 +195,32 @@ function _pushStanceEntries(entries, token) {
 
 // v12–v13: called from PlaceableObject._getContextOptions()
 Hooks.on("getTokenContextOptions", (tokenOrHtml, entries) => {
+  console.log(`${MODULE_ID} | getTokenContextOptions fired`, { tokenOrHtml, entries });
   const token = (tokenOrHtml instanceof Token ? tokenOrHtml : null)
     ?? canvas.tokens?.hover
     ?? _lastHoveredToken;
+  console.log(`${MODULE_ID} | resolved token:`, token);
+  const before = entries.length;
   _pushStanceEntries(entries, token);
+  console.log(`${MODULE_ID} | pushed ${entries.length - before} entries (entries now ${entries.length})`);
 });
 
 // v14+: ApplicationV2-based context menu (replaces getTokenContextOptions)
 Hooks.on("getTokenPlaceableContextOptions", (application, menuItems) => {
+  console.log(`${MODULE_ID} | getTokenPlaceableContextOptions fired`, { application, menuItems });
   const token = canvas.tokens?.hover ?? _lastHoveredToken;
+  console.log(`${MODULE_ID} | resolved token:`, token);
+  const before = menuItems.length;
   _pushStanceEntries(menuItems, token);
+  console.log(`${MODULE_ID} | pushed ${menuItems.length - before} entries (menuItems now ${menuItems.length})`);
 });
+
+// Catch-all: log every hook that fires with "context" or "options" in its name
+// to detect if Foundry v14 uses a completely different hook name.
+const _origCall = Hooks.call.bind(Hooks);
+Hooks.call = function(event, ...args) {
+  if (/context|options/i.test(event)) {
+    console.log(`${MODULE_ID} | Hooks.call: "${event}"`, args);
+  }
+  return _origCall(event, ...args);
+};
