@@ -64,7 +64,7 @@ async function renderStance(token) {
   if (!token.w || !token.h) return;
   if (!token.actor || !canViewStance(token)) return;
 
-  const stance = token.actor.system?.conflict?.stance;
+  const stance = token.actor.system?.stance;
   const color = RING_COLORS[stance];
   const iconPath = RING_ICONS[stance];
   if (color === undefined || !iconPath) return;
